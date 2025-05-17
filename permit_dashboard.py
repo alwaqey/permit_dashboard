@@ -9,6 +9,8 @@ FILE_PATH = "names.xlsx"
 if os.path.exists(FILE_PATH):
     df = pd.read_excel(FILE_PATH)
     df["رقم الطلب"] = df["رقم الطلب"].astype(str).str.replace(".0", "", regex=False)
+    # Rename phone column to a consistent name
+    df = df.rename(columns={"📱 رقم الجوال (بدون +966)": "رقم الجوال"})
 else:
     st.error("❌ File not found. Please make sure 'names.xlsx' is in the same folder.")
     st.stop()
