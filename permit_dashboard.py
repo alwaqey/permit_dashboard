@@ -30,10 +30,10 @@ else:
 
 client = Client(ACCOUNT_SID, AUTH_TOKEN)
 
-# Streamlit Title
+# Title
 st.title("📋 لوحة متابعة التصاريح - مركز سامودة")
 
-# Add New Permit
+# Sidebar Form
 with st.sidebar.form("add_permit"):
     st.markdown("### ➕ إضافة تصريح جديد")
     name = st.text_input("👤 الاسم")
@@ -44,9 +44,8 @@ with st.sidebar.form("add_permit"):
     submit = st.form_submit_button("✅ إضافة")
 
     if submit:
-        exp_date_clean = exp_date
         today = datetime.today().date()
-        days_left = (exp_date_clean - today).days
+        days_left = (exp_date - today).days
         notify_10 = "Yes" if days_left == 10 else "No"
         notify_30 = "Yes" if days_left == 30 else "No"
 
@@ -54,7 +53,7 @@ with st.sidebar.form("add_permit"):
             "الاسم": name,
             "رقم الطلب": req_id,
             "رقم الجوال": mobile,
-            "تاريخ الانتهاء": exp_date_clean,
+            "تاريخ الانتهاء": exp_date,
             "عدد الحوافز": camels if camels else "غير معروف",
             "CreatedOn": datetime.now(),
             "Days_Left": days_left,
@@ -64,23 +63,23 @@ with st.sidebar.form("add_permit"):
 
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
 
-        # Only notify on exact 10 or 30 days
+        # Alert on 10 or 30 days
         if days_left in [10, 30]:
             msg = (
                 f"🚨 تنبيه بخصوص تصريح\n"
                 f"📄 رقم التصريح: {req_id}\n"
                 f"👤 الاسم: {name}\n"
                 f"⏳ تبقّى {days_left} {'أيام' if days_left == 10 else 'يوماً'} على الانتهاء.\n"
-                f"📅 تاريخ الانتهاء: {exp_date_clean.strftime('%Y-%m-%d')}\n"
+                f"📅 تاريخ الانتهاء: {exp_date.strftime('%Y-%m-%d')}\n"
                 f"📞 للتواصل: {mobile}"
             )
             client.messages.create(from_=FROM_NUMBER, to=TO_NUMBER, body=msg)
             st.success(f"📤 تم إرسال تنبيه {days_left} يوم لتصريح {name}")
 
-# Filter selector
+# Filter
 st.selectbox("📅 اختر عدد الأيام المتبقية", ["الكل", "10", "30", "120"], key="days_filter")
 
-# Recalculate display column only (live)
+# Live countdown for display only
 today = datetime.today().date()
 df["عرض الأيام المتبقية"] = df["تاريخ الانتهاء"].apply(lambda d: (d - today).days)
 
@@ -91,18 +90,19 @@ if st.session_state.days_filter != "الكل":
 else:
     filtered_df = df
 
-# Format for display
-df["تاريخ الانتهاء"] = df["تاريخ الانتهاء"].apply(lambda d: d.strftime("%Y-%m-%d"))
+# Format for UI display only (don't overwrite main column!)
+filtered_df_ui = filtered_df.copy()
+filtered_df_ui["تاريخ الانتهاء"] = filtered_df_ui["تاريخ الانتهاء"].apply(lambda d: d.strftime("%Y-%m-%d"))
 
-# Show data
-st.dataframe(filtered_df[["الاسم", "رقم الطلب", "تاريخ الانتهاء", "عرض الأيام المتبقية", "رقم الجوال"]])
+# Show table
+st.dataframe(filtered_df_ui[["الاسم", "رقم الطلب", "تاريخ الانتهاء", "عرض الأيام المتبقية", "رقم الجوال"]])
 
-# Export filtered file
+# Export
 if not filtered_df.empty:
     export_file = "filtered_permits.xlsx"
     filtered_df.to_excel(export_file, index=False)
     with open(export_file, "rb") as f:
         st.download_button("📎 تحميل التصاريح المفلترة", f, file_name="التصاريح.xlsx")
 
-# Save main file
+# Save main Excel file
 df.to_excel(FILE_PATH, index=False)
