@@ -13,7 +13,12 @@ else:
     st.error("❌ File not found. Please make sure 'names.xlsx' is in the same folder.")
     st.stop()
 
-# Detect credentials
+# If Days_Left is not already in the file, calculate it once
+if "Days_Left" not in df.columns:
+    df["تاريخ الانتهاء"] = pd.to_datetime(df["تاريخ الانتهاء"], errors="coerce")
+    df["Days_Left"] = (df["تاريخ الانتهاء"] - pd.Timestamp.today().normalize()).dt.days
+
+# Twilio config
 if st.secrets._secrets is not None and "TWILIO_SID" in st.secrets:
     ACCOUNT_SID = st.secrets["TWILIO_SID"]
     AUTH_TOKEN = st.secrets["TWILIO_AUTH_TOKEN"]
@@ -27,14 +32,7 @@ else:
     FROM_NUMBER = os.getenv("FROM_NUMBER")
     TO_NUMBER = os.getenv("TO_NUMBER")
 
-# Twilio client
 client = Client(ACCOUNT_SID, AUTH_TOKEN)
-
-# Format and cleanup
-df["تاريخ الانتهاء"] = pd.to_datetime(df["تاريخ الانتهاء"], errors="coerce")
-df["Days_Left"] = (df["تاريخ الانتهاء"] - pd.Timestamp.today().normalize()).dt.days
-df["Notified_10"] = df.get("Notified_10", "No")
-df["Notified_30"] = df.get("Notified_30", "No")
 
 # Streamlit interface
 st.title("📋 لوحة متابعة التصاريح - مركز سامودة")
@@ -64,10 +62,9 @@ with st.sidebar.form("add_permit"):
             "Notified_30": "Yes" if days_left == 30 else "No"
         }
 
-        # Add to DataFrame
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
 
-        # ✅ Send WhatsApp only for the new row
+        # ✅ Send WhatsApp alert only for the new permit
         if days_left in [10, 30]:
             msg = (
                 f"🚨 تنبيه بخصوص تصريح\n"
@@ -83,15 +80,18 @@ with st.sidebar.form("add_permit"):
 # Filter selector
 st.selectbox("📅 اختر عدد الأيام المتبقية", ["الكل", "10", "30", "120"], key="days_filter")
 
+# Live Days_Left column for display only
+df["عرض الأيام المتبقية"] = (df["تاريخ الانتهاء"] - pd.Timestamp.today().normalize()).dt.days
+
 # Apply filter
 if st.session_state.days_filter != "الكل":
     days = int(st.session_state.days_filter)
-    filtered_df = df[df["Days_Left"] <= days]
+    filtered_df = df[df["عرض الأيام المتبقية"] <= days]
 else:
     filtered_df = df
 
 # Display table
-st.dataframe(filtered_df[["الاسم", "رقم الطلب", "تاريخ الانتهاء", "Days_Left", "رقم الجوال"]])
+st.dataframe(filtered_df[["الاسم", "رقم الطلب", "تاريخ الانتهاء", "عرض الأيام المتبقية", "رقم الجوال"]])
 
 # Download option
 if not filtered_df.empty:
@@ -100,5 +100,5 @@ if not filtered_df.empty:
     with open(export_file, "rb") as f:
         st.download_button("📎 تحميل التصاريح المفلترة", f, file_name="التصاريح.xlsx")
 
-# Save updates
+# Save final file (DO NOT recalculate Days_Left to avoid repeat alerts)
 df.to_excel(FILE_PATH, index=False)
