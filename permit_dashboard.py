@@ -23,12 +23,19 @@ if "TWILIO_SID" in st.secrets:
     FROM_NUMBER = st.secrets["FROM_NUMBER"]
     TO_NUMBER = st.secrets["TO_NUMBER"]
 else:
-    from dotenv import load_dotenv
-    load_dotenv()
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except:
+        pass
     ACCOUNT_SID = os.getenv("TWILIO_SID")
     AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
     FROM_NUMBER = os.getenv("FROM_NUMBER")
     TO_NUMBER = os.getenv("TO_NUMBER")
+
+# ✅ Add this line:
+client = Client(ACCOUNT_SID, AUTH_TOKEN)
+
 
 
 # Format and cleanup
