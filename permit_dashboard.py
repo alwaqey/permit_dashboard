@@ -4,17 +4,14 @@ from twilio.rest import Client
 import streamlit as st
 import os
 
-
 # Load Excel file
 FILE_PATH = "names.xlsx"
 if os.path.exists(FILE_PATH):
     df = pd.read_excel(FILE_PATH)
     df["رقم الطلب"] = df["رقم الطلب"].astype(str).str.replace(".0", "", regex=False)
-
 else:
     st.error("❌ File not found. Please make sure 'names.xlsx' is in the same folder.")
     st.stop()
-
 
 # Detect if running in Streamlit Cloud or local
 if "TWILIO_SID" in st.secrets:
@@ -33,10 +30,8 @@ else:
     FROM_NUMBER = os.getenv("FROM_NUMBER")
     TO_NUMBER = os.getenv("TO_NUMBER")
 
-# ✅ Add this line:
+# Twilio client
 client = Client(ACCOUNT_SID, AUTH_TOKEN)
-
-
 
 # Format and cleanup
 df["تاريخ الانتهاء"] = pd.to_datetime(df["تاريخ الانتهاء"], errors="coerce")
@@ -60,13 +55,6 @@ def send_whatsapp_alert(row, level):
     )
     return "Yes"
 
-# Auto-send based on thresholds
-for i, row in df.iterrows():
-    if row["Days_Left"] <= 10 and row["Notified_10"] == "No":
-        df.at[i, "Notified_10"] = send_whatsapp_alert(row, 10)
-    elif row["Days_Left"] <= 30 and row["Notified_30"] == "No":
-        df.at[i, "Notified_30"] = send_whatsapp_alert(row, 30)
-
 # Streamlit interface
 st.title("📋 لوحة متابعة التصاريح - مركز سامودة")
 
@@ -77,7 +65,7 @@ with st.sidebar.form("add_permit"):
     req_id = st.text_input("🧾 رقم الطلب")
     mobile = st.text_input("📱 رقم الجوال (بدون +966)")
     exp_date = st.date_input("📅 تاريخ انتهاء التصريح")
-    camels = st.text_input("🐪 عدد الحوافز (اختياري)")
+    camels = st.text_input("🐪 عدد الماشية (اختياري)")
     submit = st.form_submit_button("✅ إضافة")
     if submit:
         new_row = {
@@ -92,6 +80,15 @@ with st.sidebar.form("add_permit"):
             "Notified_30": "No"
         }
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+
+# Only send alerts if exactly 10 or 30 days left
+for i, row in df.iterrows():
+    if row["Days_Left"] == 10 and row["Notified_10"] == "No":
+        df.at[i, "Notified_10"] = send_whatsapp_alert(row, 10)
+        st.success(f"✅ تم إرسال تنبيه 10 أيام لتصريح: {row['الاسم']}")
+    elif row["Days_Left"] == 30 and row["Notified_30"] == "No":
+        df.at[i, "Notified_30"] = send_whatsapp_alert(row, 30)
+        st.success(f"✅ تم إرسال تنبيه 30 يوم لتصريح: {row['الاسم']}")
 
 # Filter dropdown
 st.selectbox("📅 اختر عدد الأيام المتبقية", ["الكل", "10", "30", "120"], key="days_filter")
