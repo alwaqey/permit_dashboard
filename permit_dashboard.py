@@ -1,5 +1,5 @@
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 from twilio.rest import Client
 import streamlit as st
 import os
@@ -13,7 +13,7 @@ else:
     st.error("❌ File not found. Please make sure 'names.xlsx' is in the same folder.")
     st.stop()
 
-# Detect if running in Streamlit Cloud or locally
+# Detect credentials
 if st.secrets._secrets is not None and "TWILIO_SID" in st.secrets:
     ACCOUNT_SID = st.secrets["TWILIO_SID"]
     AUTH_TOKEN = st.secrets["TWILIO_AUTH_TOKEN"]
@@ -36,21 +36,6 @@ df["Days_Left"] = (df["تاريخ الانتهاء"] - pd.Timestamp.today().norm
 df["Notified_10"] = df.get("Notified_10", "No")
 df["Notified_30"] = df.get("Notified_30", "No")
 
-# WhatsApp alert function
-def send_whatsapp_alert(row, level):
-    msg = (
-        f"🚨 تنبيه: التصريح رقم {row['رقم الطلب']} باسم {row['الاسم']} "
-        f"ينتهي خلال {level} يوم.\n"
-        f"📅 تاريخ الانتهاء: {row['تاريخ الانتهاء'].strftime('%Y-%m-%d')}\n"
-        f"📱 رقم الجوال للتواصل: {row['رقم الجوال']}"
-    )
-    client.messages.create(
-        from_=FROM_NUMBER,
-        to=TO_NUMBER,
-        body=msg
-    )
-    return "Yes"
-
 # Streamlit interface
 st.title("📋 لوحة متابعة التصاريح - مركز سامودة")
 
@@ -63,7 +48,10 @@ with st.sidebar.form("add_permit"):
     exp_date = st.date_input("📅 تاريخ انتهاء التصريح")
     camels = st.text_input("🐪 عدد الماشية (اختياري)")
     submit = st.form_submit_button("✅ إضافة")
+
     if submit:
+        days_left = (pd.to_datetime(exp_date) - datetime.today()).days
+
         new_row = {
             "الاسم": name,
             "رقم الطلب": req_id,
@@ -71,20 +59,26 @@ with st.sidebar.form("add_permit"):
             "تاريخ الانتهاء": pd.to_datetime(exp_date),
             "عدد الحوافز": camels if camels else "غير معروف",
             "CreatedOn": datetime.now(),
-            "Days_Left": (pd.to_datetime(exp_date) - datetime.today()).days,
-            "Notified_10": "No",
-            "Notified_30": "No"
+            "Days_Left": days_left,
+            "Notified_10": "Yes" if days_left == 10 else "No",
+            "Notified_30": "Yes" if days_left == 30 else "No"
         }
+
+        # Add to DataFrame
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
 
-# Send alerts only if Days_Left == 10 or 30
-for i, row in df.iterrows():
-    if row["Days_Left"] == 10 and row["Notified_10"] == "No":
-        df.at[i, "Notified_10"] = send_whatsapp_alert(row, 10)
-        st.success(f"✅ تم إرسال تنبيه ١٠ أيام للتصريح: {row['الاسم']}")
-    elif row["Days_Left"] == 30 and row["Notified_30"] == "No":
-        df.at[i, "Notified_30"] = send_whatsapp_alert(row, 30)
-        st.success(f"✅ تم إرسال تنبيه ٣٠ يوم للتصريح: {row['الاسم']}")
+        # ✅ Send WhatsApp only for the new row
+        if days_left in [10, 30]:
+            msg = (
+                f"🚨 تنبيه بخصوص تصريح\n"
+                f"التصريح رقم: {req_id}\n"
+                f"الاسم: {name}\n"
+                f"تبقّى عليه {days_left} {'أيام' if days_left == 10 else 'يوم'}\n"
+                f"📅 تاريخ الانتهاء: {exp_date.strftime('%Y-%m-%d')}\n"
+                f"📞 رقم الجوال: {mobile}"
+            )
+            client.messages.create(from_=FROM_NUMBER, to=TO_NUMBER, body=msg)
+            st.success(f"📤 تم إرسال تنبيه {days_left} يوم لتصريح {name}")
 
 # Filter selector
 st.selectbox("📅 اختر عدد الأيام المتبقية", ["الكل", "10", "30", "120"], key="days_filter")
@@ -106,5 +100,5 @@ if not filtered_df.empty:
     with open(export_file, "rb") as f:
         st.download_button("📎 تحميل التصاريح المفلترة", f, file_name="التصاريح.xlsx")
 
-# Save final updated Excel3
+# Save updates
 df.to_excel(FILE_PATH, index=False)
